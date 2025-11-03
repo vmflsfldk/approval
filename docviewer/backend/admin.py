@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, constr
@@ -18,12 +18,12 @@ class UserOut(BaseModel):
 class UserCreate(BaseModel):
     username: constr(min_length=1, max_length=190)
     password: constr(min_length=4, max_length=128)
-    role: constr(regex=r"^(admin|user)$")
+    role: Literal["admin", "user"]
 
 
 class UserUpdate(BaseModel):
     password: Optional[constr(min_length=4, max_length=128)] = None
-    role: Optional[constr(regex=r"^(admin|user)$")] = None
+    role: Optional[Literal["admin", "user"]] = None
 
 
 @router.get("/users", response_model=List[UserOut])
