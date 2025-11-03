@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PDF.js Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; }
+    #toolbar { background: #111827; color: #fff; padding: 8px 12px; display: flex; align-items: center; gap: 12px; }
+    #viewerContainer { height: calc(100% - 48px); overflow: auto; background: #1f2937; }
+    canvas { display: block; margin: 0 auto 12px; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+    button { padding: 6px 10px; }
+  </style>
+  <script src="../build/pdf.js"></script>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="prev">Prev</button>
+    <span id="pageInfo">Page 0 / 0</span>
+    <button id="next">Next</button>
+    <span id="zoomInfo">100%</span>
+    <button id="zoomIn">+</button>
+    <button id="zoomOut">-</button>
+  </div>
+  <div id="viewerContainer"></div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const fileParam = params.get('file');
+    let pdfDoc = null;
+    let currentPage = 1;
+    let scale = 1.1;
+
+    function setPageInfo() {
+      const info = document.getElementById('pageInfo');
+      if (!pdfDoc) {
+        info.textContent = 'Page 0 / 0';
+      } else {
+        info.textContent = `Page ${currentPage} / ${pdfDoc.numPages}`;
+      }
+      document.getElementById('zoomInfo').textContent = Math.round(scale * 100) + '%';
+    }
+
+    async function renderPage(num) {
+      if (!pdfDoc) return;
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale });
+      let canvas = document.getElementById(`page-${num}`);
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.id = `page-${num}`;
+        document.getElementById('viewerContainer').appendChild(canvas);
+      }
+      const context = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      await page.render({ canvasContext: context, viewport }).promise;
+      currentPage = num;
+      setPageInfo();
+    }
+
+    async function queueRender(num) {
+      if (num <= 0 || !pdfDoc || num > pdfDoc.numPages) return;
+      await renderPage(num);
+    }
+
+    function clearViewer() {
+      document.getElementById('viewerContainer').innerHTML = '';
+    }
+
+    async function loadDocument() {
+      if (!fileParam) return;
+      try {
+        await window._pdfjsReadyPromise;
+        const pdfjsLib = window.pdfjsLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '../build/pdf.worker.js';
+        const loadingTask = pdfjsLib.getDocument(decodeURIComponent(fileParam));
+        pdfDoc = await loadingTask.promise;
+        clearViewer();
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          await renderPage(i);
+        }
+      } catch (err) {
+        console.error('Failed to load PDF', err);
+      }
+    }
+
+    document.getElementById('prev').addEventListener('click', async () => {
+      if (currentPage <= 1) return;
+      currentPage -= 1;
+      await queueRender(currentPage);
+      document.getElementById(`page-${currentPage + 1}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('next').addEventListener('click', async () => {
+      if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
+      currentPage += 1;
+      await queueRender(currentPage);
+      document.getElementById(`page-${currentPage}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('zoomIn').addEventListener('click', async () => {
+      if (!pdfDoc) return;
+      scale = Math.min(scale + 0.2, 3);
+      clearViewer();
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        await renderPage(i);
+      }
+    });
+
+    document.getElementById('zoomOut').addEventListener('click', async () => {
+      if (!pdfDoc) return;
+      scale = Math.max(scale - 0.2, 0.5);
+      clearViewer();
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        await renderPage(i);
+      }
+    });
+
+    setPageInfo();
+    loadDocument();
+  </script>
+</body>
+</html>

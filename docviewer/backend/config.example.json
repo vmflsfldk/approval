@@ -1,0 +1,10 @@
+{
+  "doc_root": "C:\\DocServer\\docs",
+  "jwt_secret": "CHANGE_ME_long_random_secret",
+  "db": {
+    "host": "127.0.0.1",
+    "user": "docsvc",
+    "password": "yourpass",
+    "database": "approvaldb"
+  }
+}
