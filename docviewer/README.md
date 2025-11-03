@@ -55,6 +55,14 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 
 브라우저에서 [http://localhost:8000](http://localhost:8000) 접속 후 로그인합니다.
 
+### 관리자 페이지 (포트 7004)
+
+```bash
+uvicorn backend.admin_app:app --host 0.0.0.0 --port 7004
+```
+
+브라우저에서 [http://localhost:7004](http://localhost:7004)에 접속하여 로그인하면 사용자 추가, 권한 변경, 삭제를 수행할 수 있습니다.
+
 ## 도구 사용
 
 ### 제목 기준 폴더 정리
