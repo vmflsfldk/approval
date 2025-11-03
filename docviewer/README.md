@@ -59,7 +59,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 
 ### 제목 기준 폴더 정리
 ```bash
-python tools/classify_by_title.py "C:\\DocServer\\docs" --apply -r
+python tools/classify_by_title.py "D:\\approval\\approval_doc" --apply -r
 ```
 
 ### 파일 인덱싱(업서트)

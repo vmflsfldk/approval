@@ -1,5 +1,5 @@
 {
-  "doc_root": "C:\\DocServer\\docs",
+  "doc_root": "D:\\approval\\approval_doc",
   "jwt_secret": "CHANGE_ME_long_random_secret",
   "db": {
     "host": "127.0.0.1",
