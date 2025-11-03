@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>관리자 콘솔</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f3f4f6; }
+    header { background: #111827; color: #fff; padding: 16px 24px; }
+    main { padding: 24px; max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0; font-size: 20px; }
+    section { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); margin-bottom: 20px; }
+    .login-panel, .user-form { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    label { display: flex; flex-direction: column; font-size: 13px; color: #374151; }
+    input, select, button { padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; }
+    button { background: #2563eb; color: #fff; border: none; cursor: pointer; }
+    button.secondary { background: #6b7280; }
+    button.danger { background: #dc2626; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; font-size: 14px; }
+    th { background: #f9fafb; font-weight: 600; color: #1f2937; }
+    .status { min-height: 24px; font-size: 14px; color: #dc2626; margin-top: 12px; }
+    .status.success { color: #16a34a; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>문서 뷰어 사용자 관리</h1>
+  </header>
+  <main>
+    <section>
+      <div class="login-panel">
+        <label>아이디
+          <input type="text" id="loginUsername" placeholder="admin" />
+        </label>
+        <label>비밀번호
+          <input type="password" id="loginPassword" placeholder="비밀번호" />
+        </label>
+        <button id="loginBtn">로그인</button>
+        <button id="logoutBtn" class="secondary hidden">로그아웃</button>
+      </div>
+      <div id="loginStatus" class="status"></div>
+    </section>
+
+    <section id="managementSection" class="hidden">
+      <h2>사용자 생성</h2>
+      <form id="createUserForm" class="user-form">
+        <label>아이디
+          <input type="text" id="newUsername" required />
+        </label>
+        <label>비밀번호
+          <input type="password" id="newPassword" required minlength="4" />
+        </label>
+        <label>권한
+          <select id="newRole">
+            <option value="user">일반 사용자</option>
+            <option value="admin">관리자</option>
+          </select>
+        </label>
+        <button type="submit">추가</button>
+      </form>
+      <div id="createStatus" class="status"></div>
+    </section>
+
+    <section id="usersSection" class="hidden">
+      <h2>사용자 목록</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>아이디</th>
+            <th>권한</th>
+            <th>새 비밀번호</th>
+            <th>동작</th>
+          </tr>
+        </thead>
+        <tbody id="usersTable"></tbody>
+      </table>
+      <div id="usersStatus" class="status"></div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      token: localStorage.getItem('docviewer_admin_token') || '',
+    };
+
+    function setStatus(elementId, message, success = false) {
+      const el = document.getElementById(elementId);
+      el.textContent = message || '';
+      el.classList.toggle('success', success && message);
+    }
+
+    function authHeaders() {
+      if (!state.token) return {};
+      return { Authorization: 'Bearer ' + state.token, 'Content-Type': 'application/json' };
+    }
+
+    async function login() {
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      if (!username || !password) {
+        setStatus('loginStatus', '아이디와 비밀번호를 입력해주세요.');
+        return;
+      }
+      const body = new URLSearchParams();
+      body.append('username', username);
+      body.append('password', password);
+      try {
+        const res = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+        if (!res.ok) throw new Error('로그인 실패');
+        const data = await res.json();
+        state.token = data.access_token;
+        localStorage.setItem('docviewer_admin_token', state.token);
+        document.getElementById('loginPassword').value = '';
+        setStatus('loginStatus', '로그인 성공', true);
+        updateVisibility(true);
+        await refreshUsers();
+      } catch (err) {
+        setStatus('loginStatus', err.message || '로그인 실패');
+      }
+    }
+
+    function logout() {
+      state.token = '';
+      localStorage.removeItem('docviewer_admin_token');
+      updateVisibility(false);
+      setStatus('loginStatus', '로그아웃 되었습니다.', true);
+    }
+
+    function updateVisibility(authenticated) {
+      document.getElementById('managementSection').classList.toggle('hidden', !authenticated);
+      document.getElementById('usersSection').classList.toggle('hidden', !authenticated);
+      document.getElementById('logoutBtn').classList.toggle('hidden', !authenticated);
+      document.getElementById('loginBtn').classList.toggle('hidden', authenticated);
+    }
+
+    async function refreshUsers() {
+      if (!state.token) return;
+      setStatus('usersStatus', '');
+      try {
+        const res = await fetch('/admin/users', { headers: { Authorization: 'Bearer ' + state.token } });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            logout();
+          }
+          throw new Error('사용자 목록을 불러오지 못했습니다.');
+        }
+        const users = await res.json();
+        renderUsers(users);
+      } catch (err) {
+        setStatus('usersStatus', err.message);
+      }
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('usersTable');
+      tbody.innerHTML = '';
+      users.forEach(user => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${user.username}</td>
+          <td>
+            <select data-role>
+              <option value="user" ${user.role === 'user' ? 'selected' : ''}>일반</option>
+              <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>관리자</option>
+            </select>
+          </td>
+          <td>
+            <input type="password" placeholder="새 비밀번호" data-password minlength="4" />
+          </td>
+          <td>
+            <button data-action="save" data-username="${user.username}">저장</button>
+            <button class="danger" data-action="delete" data-username="${user.username}">삭제</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function createUser(event) {
+      event.preventDefault();
+      if (!state.token) return;
+      const username = document.getElementById('newUsername').value.trim();
+      const password = document.getElementById('newPassword').value;
+      const role = document.getElementById('newRole').value;
+      if (!username || !password) {
+        setStatus('createStatus', '아이디와 비밀번호를 입력하세요.');
+        return;
+      }
+      try {
+        const res = await fetch('/admin/users', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + state.token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, role }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || '생성 실패');
+        }
+        document.getElementById('createUserForm').reset();
+        setStatus('createStatus', '사용자가 추가되었습니다.', true);
+        await refreshUsers();
+      } catch (err) {
+        setStatus('createStatus', err.message);
+      }
+    }
+
+    async function updateUser(username, row) {
+      if (!state.token) return;
+      const role = row.querySelector('select[data-role]').value;
+      const password = row.querySelector('input[data-password]').value;
+      const payload = {};
+      if (role) payload.role = role;
+      if (password) payload.password = password;
+      if (!payload.role && !payload.password) {
+        setStatus('usersStatus', '변경할 내용을 입력하세요.');
+        return;
+      }
+      try {
+        const res = await fetch(`/admin/users/${encodeURIComponent(username)}`, {
+          method: 'PATCH',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || '수정 실패');
+        }
+        row.querySelector('input[data-password]').value = '';
+        setStatus('usersStatus', '저장되었습니다.', true);
+        await refreshUsers();
+      } catch (err) {
+        setStatus('usersStatus', err.message);
+      }
+    }
+
+    async function deleteUser(username) {
+      if (!state.token) return;
+      if (!confirm(`${username} 계정을 삭제하시겠습니까?`)) return;
+      try {
+        const res = await fetch(`/admin/users/${encodeURIComponent(username)}`, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer ' + state.token },
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || '삭제 실패');
+        }
+        setStatus('usersStatus', '삭제되었습니다.', true);
+        await refreshUsers();
+      } catch (err) {
+        setStatus('usersStatus', err.message);
+      }
+    }
+
+    document.getElementById('loginBtn').addEventListener('click', event => {
+      event.preventDefault();
+      login();
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', event => {
+      event.preventDefault();
+      logout();
+    });
+
+    document.getElementById('createUserForm').addEventListener('submit', createUser);
+
+    document.getElementById('usersTable').addEventListener('click', event => {
+      const action = event.target.getAttribute('data-action');
+      if (!action) return;
+      const username = event.target.getAttribute('data-username');
+      const row = event.target.closest('tr');
+      if (action === 'save') {
+        updateUser(username, row);
+      } else if (action === 'delete') {
+        deleteUser(username);
+      }
+    });
+
+    (function init() {
+      if (state.token) {
+        updateVisibility(true);
+        refreshUsers();
+      }
+    })();
+  </script>
+</body>
+</html>

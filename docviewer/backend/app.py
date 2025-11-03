@@ -1,14 +1,14 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import jwt
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pymysql import OperationalError
 
 from .auth import router as auth_router
 from .db import get_db, load_config
+from .dependencies import get_current_user
 
 app = FastAPI()
 
@@ -22,22 +22,6 @@ def index() -> HTMLResponse:
     if not index_file.exists():
         raise HTTPException(status_code=500, detail="Frontend index not found")
     return HTMLResponse(index_file.read_text(encoding="utf-8"))
-
-
-def get_current_user(request: Request) -> Dict[str, Any]:
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    token = auth_header.split(" ", 1)[1]
-    try:
-        payload = jwt.decode(token, load_config()["jwt_secret"], algorithms=["HS256"])
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    username = payload.get("sub")
-    role = payload.get("role")
-    if not username or not role:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-    return {"username": username, "role": role}
 
 
 app.include_router(auth_router)
