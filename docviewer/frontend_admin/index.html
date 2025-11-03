@@ -17,6 +17,8 @@
     button.secondary { background: #6b7280; }
     button.danger { background: #dc2626; }
     button:disabled { background: #9ca3af; cursor: not-allowed; }
+    .helper { font-size: 13px; color: #4b5563; margin-top: 8px; }
+    .helper code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; font-size: 14px; }
     th { background: #f9fafb; font-weight: 600; color: #1f2937; }
@@ -33,14 +35,15 @@
     <section>
       <div class="login-panel">
         <label>아이디
-          <input type="text" id="loginUsername" placeholder="admin" />
+          <input type="text" id="loginUsername" placeholder="sght" />
         </label>
         <label>비밀번호
-          <input type="password" id="loginPassword" placeholder="비밀번호" />
+          <input type="password" id="loginPassword" placeholder="sght12345" />
         </label>
         <button id="loginBtn">로그인</button>
         <button id="logoutBtn" class="secondary hidden">로그아웃</button>
       </div>
+      <p class="helper">기본 관리자 계정은 <code>sght</code>, 비밀번호는 <code>sght12345</code>입니다.</p>
       <div id="loginStatus" class="status"></div>
     </section>
 
