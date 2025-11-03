@@ -13,10 +13,21 @@ _CONFIG_CACHE = None
 def load_config() -> dict:
     global _CONFIG_CACHE
     if _CONFIG_CACHE is None:
-        config_path = os.environ.get("DOCVIEWER_CONFIG", os.path.join(os.path.dirname(__file__), "config.json"))
-        if not os.path.exists(config_path):
-            raise RuntimeError(f"Config file not found: {config_path}. Copy config.example.json to config.json and update it.")
-        with open(config_path, "r", encoding="utf-8") as f:
+        base_dir = os.path.dirname(__file__)
+        config_path = os.environ.get("DOCVIEWER_CONFIG", os.path.join(base_dir, "config.json"))
+
+        if os.path.exists(config_path):
+            path_to_use = config_path
+        else:
+            example_path = os.path.join(base_dir, "config.example.json")
+            if os.path.exists(example_path):
+                path_to_use = example_path
+            else:
+                raise RuntimeError(
+                    "Config file not found. Ensure either config.json or config.example.json exists in the backend directory."
+                )
+
+        with open(path_to_use, "r", encoding="utf-8") as f:
             _CONFIG_CACHE = json.load(f)
     return _CONFIG_CACHE
 
@@ -24,9 +35,13 @@ def load_config() -> dict:
 def get_connection():
     config = load_config()
     db_conf = config["db"]
+    username = db_conf.get("user") or db_conf.get("root")
+    if not username:
+        raise KeyError("Database configuration must define 'user'.")
+
     return pymysql.connect(
         host=db_conf.get("host", "127.0.0.1"),
-        user=db_conf["user"],
+        user=username,
         password=db_conf["password"],
         database=db_conf.get("database", "approvaldb"),
         charset="utf8mb4",
