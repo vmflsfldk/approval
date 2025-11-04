@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pymysql import OperationalError
+from urllib.parse import quote
 
 from .auth import router as auth_router
 from .db import get_db, load_config
@@ -193,11 +194,15 @@ def preview_doc(doc_id: int, current_user: Dict[str, Any] = Depends(get_current_
                 "INSERT INTO audit_logs(`user`, action, doc_id, q) VALUES (%s, 'VIEW', %s, NULL)",
                 (current_user["username"], doc_id),
             )
+    filename_encoded = quote(file_path.name)
+    disposition = (
+        f'inline; filename="{filename_encoded}"; '
+        f"filename*=UTF-8''{filename_encoded}"
+    )
     return FileResponse(
         str(file_path),
         media_type="application/pdf",
-        filename=file_path.name,
-        headers={"Content-Disposition": f'inline; filename="{file_path.name}"'}
+        headers={"Content-Disposition": disposition},
     )
 
 
@@ -213,9 +218,13 @@ def download_doc(doc_id: int, current_user: Dict[str, Any] = Depends(get_current
                 "INSERT INTO audit_logs(`user`, action, doc_id, q) VALUES (%s, 'DOWNLOAD', %s, NULL)",
                 (current_user["username"], doc_id),
             )
+    filename_encoded = quote(file_path.name)
+    disposition = (
+        f'attachment; filename="{filename_encoded}"; '
+        f"filename*=UTF-8''{filename_encoded}"
+    )
     return FileResponse(
         str(file_path),
         media_type="application/pdf",
-        filename=file_path.name,
-        headers={"Content-Disposition": f'attachment; filename="{file_path.name}"'},
+        headers={"Content-Disposition": disposition},
     )
