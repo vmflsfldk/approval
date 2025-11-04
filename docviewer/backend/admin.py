@@ -22,6 +22,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    username: Optional[constr(min_length=1, max_length=190)] = None
     password: Optional[constr(min_length=4, max_length=128)] = None
     role: Optional[Literal["admin", "user"]] = None
 
@@ -54,6 +55,13 @@ def create_user(payload: UserCreate, current_user=Depends(require_admin)):
 def update_user(username: str, payload: UserUpdate, current_user=Depends(require_admin)):
     updates = []
     params = []
+    new_username = payload.username if payload.username else None
+    if new_username and new_username == username:
+        new_username = None
+
+    if new_username:
+        updates.append("username = %s")
+        params.append(new_username)
     if payload.password:
         updates.append("password_hash = %s")
         params.append(pwd_context.hash(payload.password))
@@ -68,8 +76,28 @@ def update_user(username: str, payload: UserUpdate, current_user=Depends(require
             cur.execute("SELECT username FROM users WHERE username=%s", (username,))
             if not cur.fetchone():
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+            if new_username:
+                cur.execute("SELECT username FROM users WHERE username=%s", (new_username,))
+                if cur.fetchone():
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
             cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE username = %s", params)
-            cur.execute("SELECT username, role FROM users WHERE username=%s", (username,))
+
+            if new_username:
+                cur.execute(
+                    "UPDATE docs SET owner_user = %s WHERE owner_user = %s",
+                    (new_username, username),
+                )
+                cur.execute(
+                    "UPDATE audit_logs SET `user` = %s WHERE `user` = %s",
+                    (new_username, username),
+                )
+
+            cur.execute(
+                "SELECT username, role FROM users WHERE username=%s",
+                (new_username or username,),
+            )
             updated = cur.fetchone()
     return UserOut(**updated)
 

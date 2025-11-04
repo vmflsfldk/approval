@@ -22,6 +22,7 @@
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; font-size: 14px; }
     th { background: #f9fafb; font-weight: 600; color: #1f2937; }
+    table input[type="text"], table input[type="password"], table select { width: 100%; box-sizing: border-box; }
     .status { min-height: 24px; font-size: 14px; color: #dc2626; margin-top: 12px; }
     .status.success { color: #16a34a; }
     .hidden { display: none; }
@@ -166,22 +167,61 @@
       tbody.innerHTML = '';
       users.forEach(user => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${user.username}</td>
-          <td>
-            <select data-role>
-              <option value="user" ${user.role === 'user' ? 'selected' : ''}>일반</option>
-              <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>관리자</option>
-            </select>
-          </td>
-          <td>
-            <input type="password" placeholder="새 비밀번호" data-password minlength="4" />
-          </td>
-          <td>
-            <button data-action="save" data-username="${user.username}">저장</button>
-            <button class="danger" data-action="delete" data-username="${user.username}">삭제</button>
-          </td>
-        `;
+
+        const usernameTd = document.createElement('td');
+        const usernameInput = document.createElement('input');
+        usernameInput.type = 'text';
+        usernameInput.value = user.username;
+        usernameInput.setAttribute('data-username-input', '');
+        usernameInput.dataset.originalUsername = user.username;
+        usernameTd.appendChild(usernameInput);
+        tr.appendChild(usernameTd);
+
+        const roleTd = document.createElement('td');
+        const roleSelect = document.createElement('select');
+        roleSelect.setAttribute('data-role', '');
+        roleSelect.dataset.originalRole = user.role;
+
+        const roleUserOption = document.createElement('option');
+        roleUserOption.value = 'user';
+        roleUserOption.textContent = '일반';
+        if (user.role === 'user') roleUserOption.selected = true;
+        roleSelect.appendChild(roleUserOption);
+
+        const roleAdminOption = document.createElement('option');
+        roleAdminOption.value = 'admin';
+        roleAdminOption.textContent = '관리자';
+        if (user.role === 'admin') roleAdminOption.selected = true;
+        roleSelect.appendChild(roleAdminOption);
+
+        roleTd.appendChild(roleSelect);
+        tr.appendChild(roleTd);
+
+        const passwordTd = document.createElement('td');
+        const passwordInput = document.createElement('input');
+        passwordInput.type = 'password';
+        passwordInput.placeholder = '새 비밀번호';
+        passwordInput.setAttribute('data-password', '');
+        passwordInput.minLength = 4;
+        passwordTd.appendChild(passwordInput);
+        tr.appendChild(passwordTd);
+
+        const actionTd = document.createElement('td');
+        const saveButton = document.createElement('button');
+        saveButton.textContent = '저장';
+        saveButton.dataset.action = 'save';
+        saveButton.dataset.username = user.username;
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '삭제';
+        deleteButton.classList.add('danger');
+        deleteButton.dataset.action = 'delete';
+        deleteButton.dataset.username = user.username;
+
+        actionTd.appendChild(saveButton);
+        actionTd.appendChild(deleteButton);
+        tr.appendChild(actionTd);
+
         tbody.appendChild(tr);
       });
     }
@@ -216,12 +256,37 @@
 
     async function updateUser(username, row) {
       if (!state.token) return;
-      const role = row.querySelector('select[data-role]').value;
-      const password = row.querySelector('input[data-password]').value;
+      const usernameInput = row.querySelector('input[data-username-input]');
+      const roleSelect = row.querySelector('select[data-role]');
+      const passwordInput = row.querySelector('input[data-password]');
+
+      if (!usernameInput) {
+        setStatus('usersStatus', '아이디 입력 필드를 찾을 수 없습니다.');
+        return;
+      }
+
+      const newUsername = usernameInput.value.trim();
+      usernameInput.value = newUsername;
+      if (!newUsername) {
+        setStatus('usersStatus', '아이디를 입력하세요.');
+        usernameInput.focus();
+        return;
+      }
+
       const payload = {};
-      if (role) payload.role = role;
+      if (newUsername !== username) {
+        payload.username = newUsername;
+      }
+
+      if (roleSelect) {
+        if (roleSelect.value !== roleSelect.dataset.originalRole) {
+          payload.role = roleSelect.value;
+        }
+      }
+
+      const password = passwordInput ? passwordInput.value : '';
       if (password) payload.password = password;
-      if (!payload.role && !payload.password) {
+      if (!payload.username && !payload.role && !payload.password) {
         setStatus('usersStatus', '변경할 내용을 입력하세요.');
         return;
       }
@@ -235,7 +300,7 @@
           const err = await res.json().catch(() => ({}));
           throw new Error(err.detail || '수정 실패');
         }
-        row.querySelector('input[data-password]').value = '';
+        if (passwordInput) passwordInput.value = '';
         setStatus('usersStatus', '저장되었습니다.', true);
         await refreshUsers();
       } catch (err) {
