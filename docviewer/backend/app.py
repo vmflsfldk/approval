@@ -27,13 +27,14 @@ def index() -> HTMLResponse:
 app.include_router(auth_router)
 
 
-def apply_access_filters(where: List[str], params: List[Any], user: Dict[str, Any], target_user: Optional[str]):
-    if user["role"] == "user":
-        where.append("owner_user = %s")
-        params.append(user["username"])
-    elif user["role"] == "admin" and target_user:
-        where.append("owner_user = %s")
-        params.append(target_user)
+def apply_access_filters(
+    where: List[str], params: List[Any], user: Dict[str, Any], target_user: Optional[str]
+):
+    requested_user = target_user or user["username"]
+    if requested_user != user["username"]:
+        raise HTTPException(status_code=403, detail="Access to requested user is forbidden")
+    where.append("owner_user = %s")
+    params.append(user["username"])
 
 
 @app.get("/api/titles")
@@ -73,6 +74,10 @@ def list_docs(
     where: List[str] = []
     params: List[Any] = []
     title_expr = "CASE WHEN LOCATE('-', file_name) > 0 THEN SUBSTRING(file_name, 1, LOCATE('-', file_name) - 1) ELSE file_name END"
+
+    if user and user != current_user["username"]:
+        raise HTTPException(status_code=403, detail="Cannot query documents for other users")
+
     apply_access_filters(where, params, current_user, user)
 
     if title:
@@ -156,6 +161,8 @@ def fetch_doc(doc_id: int, current_user: Dict[str, Any]) -> Dict[str, Any]:
             doc = cur.fetchone()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    if doc.get("owner_user") != current_user["username"]:
+        raise HTTPException(status_code=403, detail="Document access forbidden")
     return doc
 
 
