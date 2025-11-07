@@ -33,11 +33,15 @@ class FakeCursor:
                 self._result = {"username": username}
             return
 
-        if sql.startswith("SELECT username, role FROM users WHERE username="):
+        if sql.startswith("SELECT username, name, role FROM users WHERE username="):
             username = params[0]
             user = self.data["users"].get(username)
             if user:
-                self._result = {"username": username, "role": user["role"]}
+                self._result = {
+                    "username": username,
+                    "name": user["name"],
+                    "role": user["role"],
+                }
             return
 
         if sql.startswith("UPDATE users SET"):
@@ -54,6 +58,9 @@ class FakeCursor:
             for field in fields:
                 if field == "username = %s":
                     new_username = params[idx]
+                    idx += 1
+                elif field == "name = %s":
+                    user["name"] = params[idx]
                     idx += 1
                 elif field == "password_hash = %s":
                     user["password_hash"] = params[idx]
@@ -111,7 +118,7 @@ def patch_get_db(monkeypatch, data):
 def test_update_user_allows_username_change(monkeypatch):
     data = {
         "users": {
-            "alice": {"password_hash": "hash", "role": "user"},
+            "alice": {"password_hash": "hash", "name": "Alice", "role": "user"},
         },
         "docs": [
             {"owner_user": "alice", "id": 1},
@@ -127,14 +134,16 @@ def test_update_user_allows_username_change(monkeypatch):
 
     result = admin_module.update_user(
         "alice",
-        admin_module.UserUpdate(username="alice2"),
+        admin_module.UserUpdate(username="alice2", name="Alice Smith"),
         current_user={"username": "admin", "role": "admin"},
     )
 
     assert result.username == "alice2"
+    assert result.name == "Alice Smith"
     assert result.role == "user"
     assert "alice" not in data["users"]
     assert "alice2" in data["users"]
+    assert data["users"]["alice2"]["name"] == "Alice Smith"
     assert data["docs"][0]["owner_user"] == "alice2"
     assert data["docs"][1]["owner_user"] == "charlie"
     assert data["audit_logs"][0]["user"] == "alice2"
@@ -144,8 +153,8 @@ def test_update_user_allows_username_change(monkeypatch):
 def test_update_user_rejects_duplicate_username(monkeypatch):
     data = {
         "users": {
-            "alice": {"password_hash": "hash", "role": "user"},
-            "bob": {"password_hash": "hash2", "role": "admin"},
+            "alice": {"password_hash": "hash", "name": "Alice", "role": "user"},
+            "bob": {"password_hash": "hash2", "name": "Bob", "role": "admin"},
         },
         "docs": [],
         "audit_logs": [],
