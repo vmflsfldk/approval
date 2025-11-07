@@ -24,6 +24,7 @@ ALTER TABLE `docs`
 
 CREATE TABLE IF NOT EXISTS `users` (
   `username` VARCHAR(190) NOT NULL,
+  `name` VARCHAR(190) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
   `role` ENUM('admin','user') NOT NULL,
   PRIMARY KEY (`username`)

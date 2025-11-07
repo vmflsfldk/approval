@@ -12,17 +12,20 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 class UserOut(BaseModel):
     username: str
+    name: str
     role: str
 
 
 class UserCreate(BaseModel):
     username: constr(min_length=1, max_length=190)
+    name: Optional[constr(min_length=1, max_length=190)] = None
     password: constr(min_length=4, max_length=128)
     role: Literal["admin", "user"]
 
 
 class UserUpdate(BaseModel):
     username: Optional[constr(min_length=1, max_length=190)] = None
+    name: Optional[constr(min_length=1, max_length=190)] = None
     password: Optional[constr(min_length=4, max_length=128)] = None
     role: Optional[Literal["admin", "user"]] = None
 
@@ -31,7 +34,7 @@ class UserUpdate(BaseModel):
 def list_users(current_user=Depends(require_admin)):
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT username, role FROM users ORDER BY username")
+            cur.execute("SELECT username, name, role FROM users ORDER BY username")
             rows = cur.fetchall()
             return [UserOut(**row) for row in rows]
 
@@ -39,16 +42,18 @@ def list_users(current_user=Depends(require_admin)):
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserOut)
 def create_user(payload: UserCreate, current_user=Depends(require_admin)):
     password_hash = pwd_context.hash(payload.password)
+    provided_name = payload.name.strip() if payload.name else ""
+    name = provided_name or payload.username
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT username FROM users WHERE username=%s", (payload.username,))
             if cur.fetchone():
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
             cur.execute(
-                "INSERT INTO users(username, password_hash, role) VALUES (%s, %s, %s)",
-                (payload.username, password_hash, payload.role),
+                "INSERT INTO users(username, name, password_hash, role) VALUES (%s, %s, %s, %s)",
+                (payload.username, name, password_hash, payload.role),
             )
-    return UserOut(username=payload.username, role=payload.role)
+    return UserOut(username=payload.username, name=name, role=payload.role)
 
 
 @router.patch("/users/{username}", response_model=UserOut)
@@ -62,6 +67,11 @@ def update_user(username: str, payload: UserUpdate, current_user=Depends(require
     if new_username:
         updates.append("username = %s")
         params.append(new_username)
+    if payload.name:
+        stripped_name = payload.name.strip()
+        if stripped_name:
+            updates.append("name = %s")
+            params.append(stripped_name)
     if payload.password:
         updates.append("password_hash = %s")
         params.append(pwd_context.hash(payload.password))
@@ -95,7 +105,7 @@ def update_user(username: str, payload: UserUpdate, current_user=Depends(require
                 )
 
             cur.execute(
-                "SELECT username, role FROM users WHERE username=%s",
+                "SELECT username, name, role FROM users WHERE username=%s",
                 (new_username or username,),
             )
             updated = cur.fetchone()
