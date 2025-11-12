@@ -91,6 +91,55 @@
       currentBlobUrl: null,
     };
 
+    function revokeCurrentBlob() {
+      if (state.currentBlobUrl) {
+        URL.revokeObjectURL(state.currentBlobUrl);
+        state.currentBlobUrl = null;
+      }
+    }
+
+    function clearSession(message) {
+      state.token = '';
+      state.role = 'user';
+      state.page = 1;
+      state.totalPages = 0;
+      localStorage.removeItem('docviewer_token');
+      revokeCurrentBlob();
+      document.getElementById('pdfViewer').src = '';
+      const filterForm = document.getElementById('filterForm');
+      if (filterForm) {
+        filterForm.reset();
+      }
+      const titleSelect = document.getElementById('titleFilter');
+      if (titleSelect) {
+        titleSelect.innerHTML = '<option value="">전체</option>';
+      }
+      renderDocs([]);
+      document.getElementById('pageInfo').textContent = '0 / 0';
+      applyRole();
+      setStatus(message || '세션이 만료되었습니다. 다시 로그인하세요.');
+    }
+
+    async function handleResponse(res, fallbackMessage) {
+      if (res.status === 401) {
+        clearSession('세션이 만료되었습니다. 다시 로그인하세요.');
+        return null;
+      }
+      if (!res.ok) {
+        let detailMessage = fallbackMessage;
+        try {
+          const data = await res.json();
+          if (data && data.detail) {
+            detailMessage = `${fallbackMessage}: ${data.detail}`;
+          }
+        } catch (err) {
+          // ignore parsing failure and use fallback message
+        }
+        throw new Error(detailMessage);
+      }
+      return res;
+    }
+
     function decodeToken(token) {
       try {
         const payload = token.split('.')[1];
@@ -172,8 +221,9 @@
       if (!state.token) return;
       try {
         const res = await fetch('/api/titles', { headers: getAuthHeaders() });
-        if (!res.ok) throw new Error('제목 조회 실패');
-        const data = await res.json();
+        const okRes = await handleResponse(res, '제목 조회 실패');
+        if (!okRes) return;
+        const data = await okRes.json();
         const select = document.getElementById('titleFilter');
         select.innerHTML = '<option value="">전체</option>';
         data.titles.forEach(title => {
@@ -184,7 +234,7 @@
         });
       } catch (err) {
         console.error(err);
-        setStatus('제목 목록을 불러오지 못했습니다.');
+        setStatus(err.message);
       }
     }
 
@@ -228,8 +278,9 @@
       try {
         const params = buildQueryParams();
         const res = await fetch('/api/docs?' + params.toString(), { headers: getAuthHeaders() });
-        if (!res.ok) throw new Error('문서 목록 조회 실패');
-        const data = await res.json();
+        const okRes = await handleResponse(res, '문서 목록 조회 실패');
+        if (!okRes) return;
+        const data = await okRes.json();
         renderDocs(data.items || []);
         state.totalPages = Math.ceil(data.total / data.size) || 0;
         document.getElementById('pageInfo').textContent = `${state.page} / ${state.totalPages}`;
@@ -262,11 +313,10 @@
       if (!state.token) return;
       try {
         const res = await fetch(`/api/docs/${id}/preview`, { headers: getAuthHeaders() });
-        if (!res.ok) throw new Error('미리보기 실패');
-        const blob = await res.blob();
-        if (state.currentBlobUrl) {
-          URL.revokeObjectURL(state.currentBlobUrl);
-        }
+        const okRes = await handleResponse(res, '미리보기 실패');
+        if (!okRes) return;
+        const blob = await okRes.blob();
+        revokeCurrentBlob();
         const blobUrl = URL.createObjectURL(blob);
         state.currentBlobUrl = blobUrl;
         document.getElementById('pdfViewer').src = `/frontend/pdfjs/web/viewer.html?file=${encodeURIComponent(blobUrl)}`;
@@ -279,9 +329,10 @@
       if (!state.token) return;
       try {
         const res = await fetch(`/api/docs/${id}/download`, { headers: getAuthHeaders() });
-        if (!res.ok) throw new Error('다운로드 실패');
-        const blob = await res.blob();
-        const disposition = res.headers.get('Content-Disposition') || '';
+        const okRes = await handleResponse(res, '다운로드 실패');
+        if (!okRes) return;
+        const blob = await okRes.blob();
+        const disposition = okRes.headers.get('Content-Disposition') || '';
         const match = disposition.match(/filename="?([^";]+)"?/);
         const filename = match ? decodeURIComponent(match[1]) : `document-${id}.pdf`;
         const url = URL.createObjectURL(blob);
